@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+release/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+coverage/
+
+# Electron builder cache
+.cache/
+electron-builder-cache/
+
+# Temporary files
+*.tmp
+*.temp
+scratchpad/
+
+# Claude Code
+.claude/
+
+# Sample/test spec files
+*.edispec
+sample*.json
