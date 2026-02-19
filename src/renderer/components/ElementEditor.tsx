@@ -3,7 +3,7 @@
  * Allows detailed editing of element properties, codes, and examples
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Specification, Loop, Segment, Element, CodeValue } from '../../shared/models/edi-types';
 import { UsageSelect } from './UsageSelect';
 
@@ -110,8 +110,18 @@ export function ElementEditor({ element, path, specification, onUpdate }: Elemen
     updateElement({ codeValues });
   }, [element.codeValues, updateElement]);
 
+  const [codeFilter, setCodeFilter] = useState('');
+
   const includedCodes = (element.codeValues || []).filter(c => c.included);
   const excludedCodes = (element.codeValues || []).filter(c => !c.included);
+
+  const filteredCodes = (element.codeValues || [])
+    .map((c, i) => ({ code: c, originalIndex: i }))
+    .filter(({ code: c }) => {
+      if (!codeFilter) return true;
+      const lower = codeFilter.toLowerCase();
+      return c.code.toLowerCase().includes(lower) || c.description.toLowerCase().includes(lower);
+    });
 
   return (
     <div className="editor">
@@ -255,6 +265,16 @@ export function ElementEditor({ element, path, specification, onUpdate }: Elemen
                 </div>
               </div>
 
+              <div className="form-group" style={{ marginBottom: '8px' }}>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Filter by code or description..."
+                  value={codeFilter}
+                  onChange={e => setCodeFilter(e.target.value)}
+                />
+              </div>
+
               <div style={{ maxHeight: '400px', overflow: 'auto' }}>
                 <table className="table">
                   <thead>
@@ -266,8 +286,8 @@ export function ElementEditor({ element, path, specification, onUpdate }: Elemen
                     </tr>
                   </thead>
                   <tbody>
-                    {(element.codeValues || []).map((code, index) => (
-                      <tr key={index} style={{ opacity: code.included ? 1 : 0.5 }}>
+                    {filteredCodes.map(({ code, originalIndex }) => (
+                      <tr key={originalIndex} style={{ opacity: code.included ? 1 : 0.5 }}>
                         <td>
                           <input
                             type="checkbox"
@@ -281,7 +301,7 @@ export function ElementEditor({ element, path, specification, onUpdate }: Elemen
                             className="form-input font-mono"
                             style={{ padding: '4px 8px' }}
                             value={code.code}
-                            onChange={e => handleUpdateCode(index, { code: e.target.value })}
+                            onChange={e => handleUpdateCode(originalIndex, { code: e.target.value })}
                           />
                         </td>
                         <td>
@@ -299,7 +319,7 @@ export function ElementEditor({ element, path, specification, onUpdate }: Elemen
                         <td>
                           <button
                             className="btn btn-secondary btn-sm btn-icon"
-                            onClick={() => handleDeleteCode(index)}
+                            onClick={() => handleDeleteCode(originalIndex)}
                             title="Delete code"
                           >
                             ×
