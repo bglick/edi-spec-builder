@@ -107,6 +107,7 @@ body {
 .sidebar-content {
   flex: 1;
   overflow-y: auto;
+  overflow-x: auto;
   padding: 8px 0;
 }
 
@@ -138,6 +139,10 @@ body {
 }
 
 /* Tree Navigation */
+.tree-navigation {
+  min-width: fit-content;
+}
+
 .tree-item {
   user-select: none;
 }
@@ -229,7 +234,7 @@ body {
 }
 
 .tree-children {
-  margin-left: 24px;
+  /* Indentation handled solely by paddingLeft on .tree-item */
 }
 
 /* Buttons */
