@@ -111,7 +111,7 @@ function LoopTreeItem({
   };
 
   return (
-    <div className="tree-item" style={{ paddingLeft: depth * 16 }}>
+    <div className="tree-item" style={{ paddingLeft: depth * 20 }}>
       <div
         className={`tree-item-header ${isSelected ? 'selected' : ''}`}
         onClick={handleClick}
@@ -214,7 +214,7 @@ function SegmentTreeItem({
   };
 
   return (
-    <div className="tree-item" style={{ paddingLeft: depth * 16 }}>
+    <div className="tree-item" style={{ paddingLeft: depth * 20 }}>
       <div
         className={`tree-item-header ${isSelected ? 'selected' : ''}`}
         onClick={handleClick}
@@ -268,7 +268,7 @@ function ElementTreeItem({
   };
 
   return (
-    <div className="tree-item" style={{ paddingLeft: depth * 16 }}>
+    <div className="tree-item" style={{ paddingLeft: depth * 20 }}>
       <div
         className={`tree-item-header ${isSelected ? 'selected' : ''}`}
         onClick={handleClick}
