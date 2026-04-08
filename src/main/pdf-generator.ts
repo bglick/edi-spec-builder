@@ -13,7 +13,55 @@ import {
   Variant,
   UsageType,
   ExampleEDI,
+  CodeValue,
 } from '../shared/models/edi-types';
+
+interface CodeListEntry {
+  appendixRef: string;
+  elementId: string;
+  elementName: string;
+  segmentName: string;
+  codes: CodeValue[];
+}
+
+function collectCodeListEntries(spec: Specification, hasExamples: boolean): Map<string, CodeListEntry> {
+  const collected: { elementId: string; elementName: string; segmentName: string; codes: CodeValue[] }[] = [];
+
+  function traverseLoop(loop: Loop): void {
+    for (const segment of loop.segments) {
+      for (const element of segment.elements) {
+        if (element.codeValues) {
+          const included = element.codeValues.filter(c => c.included);
+          if (included.length > 10) {
+            collected.push({
+              elementId: element.id,
+              elementName: element.name,
+              segmentName: segment.name,
+              codes: included,
+            });
+          }
+        }
+      }
+    }
+    for (const childLoop of loop.loops) {
+      traverseLoop(childLoop);
+    }
+  }
+
+  for (const loop of spec.loops) {
+    traverseLoop(loop);
+  }
+
+  const appendixLetter = hasExamples ? 'B' : 'A';
+  const map = new Map<string, CodeListEntry>();
+  collected.forEach((entry, i) => {
+    map.set(entry.elementId, {
+      appendixRef: `${appendixLetter}.${i + 1}`,
+      ...entry,
+    });
+  });
+  return map;
+}
 
 const COLORS = {
   primary: '#1a365d',
@@ -65,25 +113,34 @@ export async function generatePDF(specification: Specification, outputPath: stri
       const stream = fs.createWriteStream(outputPath);
       doc.pipe(stream);
 
+      const hasExamples = specification.examples.length > 0;
+      const codeListMap = collectCodeListEntries(specification, hasExamples);
+
       // Title Page
       renderTitlePage(doc, specification);
 
       // Table of Contents
       doc.addPage();
-      renderTableOfContents(doc, specification);
+      renderTableOfContents(doc, specification, codeListMap);
 
       // Main Content
       let loopNumber = 1;
       for (const loop of specification.loops) {
         doc.addPage();
-        renderLoop(doc, loop, loopNumber, 0);
+        renderLoop(doc, loop, loopNumber, 0, codeListMap);
         loopNumber++;
       }
 
       // Examples Appendix
-      if (specification.examples.length > 0) {
+      if (hasExamples) {
         doc.addPage();
         renderExamplesAppendix(doc, specification.examples);
+      }
+
+      // Code Lists Appendix
+      if (codeListMap.size > 0) {
+        doc.addPage();
+        renderCodeListAppendix(doc, codeListMap, hasExamples);
       }
 
       // Add page numbers to all pages
@@ -173,7 +230,7 @@ function renderTitlePage(doc: PDFKit.PDFDocument, spec: Specification): void {
   });
 }
 
-function renderTableOfContents(doc: PDFKit.PDFDocument, spec: Specification): void {
+function renderTableOfContents(doc: PDFKit.PDFDocument, spec: Specification, codeListMap: Map<string, CodeListEntry>): void {
   doc
     .font(FONTS.bold)
     .fontSize(20)
@@ -192,9 +249,15 @@ function renderTableOfContents(doc: PDFKit.PDFDocument, spec: Specification): vo
     itemNumber++;
   }
 
-  if (spec.examples.length > 0) {
+  const hasExamples = spec.examples.length > 0;
+  if (hasExamples) {
     doc.moveDown(0.5);
     doc.text(`Appendix A: EDI Examples`);
+  }
+  if (codeListMap.size > 0) {
+    const appendixLetter = hasExamples ? 'B' : 'A';
+    doc.moveDown(0.5);
+    doc.text(`Appendix ${appendixLetter}: Code Lists`);
   }
 }
 
@@ -214,7 +277,7 @@ function renderTocLoop(doc: PDFKit.PDFDocument, loop: Loop, prefix: string, dept
   }
 }
 
-function renderLoop(doc: PDFKit.PDFDocument, loop: Loop, number: number, depth: number): void {
+function renderLoop(doc: PDFKit.PDFDocument, loop: Loop, number: number, depth: number, codeListMap: Map<string, CodeListEntry>): void {
   const indent = 20 * depth;
 
   // Check for page break
@@ -277,12 +340,12 @@ function renderLoop(doc: PDFKit.PDFDocument, loop: Loop, number: number, depth: 
 
   // Segments
   for (const segment of loop.segments) {
-    renderSegment(doc, segment, depth);
+    renderSegment(doc, segment, depth, codeListMap);
   }
 
   // Nested Loops
   for (let i = 0; i < loop.loops.length; i++) {
-    renderLoop(doc, loop.loops[i], i + 1, depth + 1);
+    renderLoop(doc, loop.loops[i], i + 1, depth + 1, codeListMap);
   }
 }
 
@@ -332,7 +395,7 @@ function renderVariants(doc: PDFKit.PDFDocument, variants: Variant[], indent: nu
   }
 }
 
-function renderSegment(doc: PDFKit.PDFDocument, segment: Segment, depth: number): void {
+function renderSegment(doc: PDFKit.PDFDocument, segment: Segment, depth: number, codeListMap: Map<string, CodeListEntry>): void {
   const indent = 20 * depth;
 
   // Check for page break
@@ -392,12 +455,12 @@ function renderSegment(doc: PDFKit.PDFDocument, segment: Segment, depth: number)
   doc.moveDown(0.5);
 
   // Elements Table
-  renderElementsTable(doc, segment.elements, indent);
+  renderElementsTable(doc, segment.elements, indent, codeListMap);
 
   doc.moveDown(1);
 }
 
-function renderElementsTable(doc: PDFKit.PDFDocument, elements: Element[], indent: number): void {
+function renderElementsTable(doc: PDFKit.PDFDocument, elements: Element[], indent: number, codeListMap: Map<string, CodeListEntry>): void {
   const tableLeft = 72 + indent;
   const tableWidth = doc.page.width - 144 - indent;
   const colWidths = {
@@ -440,7 +503,7 @@ function renderElementsTable(doc: PDFKit.PDFDocument, elements: Element[], inden
     }
 
     const rowY = doc.y;
-    const rowHeight = calculateElementRowHeight(doc, element, colWidths);
+    const rowHeight = calculateElementRowHeight(doc, element, colWidths, codeListMap);
 
     // Alternating row background
     if (element.position % 2 === 0) {
@@ -482,15 +545,19 @@ function renderElementsTable(doc: PDFKit.PDFDocument, elements: Element[], inden
     // Code values
     if (element.codeValues && element.codeValues.filter(c => c.included).length > 0) {
       const includedCodes = element.codeValues.filter(c => c.included);
-      if (includedCodes.length <= 5) {
+      if (includedCodes.length <= 10) {
         for (const code of includedCodes) {
           doc.font(FONTS.mono).fontSize(7).fillColor(COLORS.text);
           doc.text(`${code.code}: ${code.description}`, x, noteY, { width: colWidths.desc - 8 });
           noteY += 9;
         }
       } else {
-        doc.font(FONTS.regular).fontSize(7).fillColor(COLORS.muted);
-        doc.text(`(${includedCodes.length} code values - see code list)`, x, noteY, { width: colWidths.desc - 8 });
+        const entry = codeListMap.get(element.id);
+        const refText = entry
+          ? `(See Appendix ${entry.appendixRef} for code values)`
+          : `(${includedCodes.length} code values)`;
+        doc.font(FONTS.regular).fontSize(7).fillColor(COLORS.accent);
+        doc.text(refText, x, noteY, { width: colWidths.desc - 8 });
       }
     }
 
@@ -501,7 +568,7 @@ function renderElementsTable(doc: PDFKit.PDFDocument, elements: Element[], inden
   doc.rect(tableLeft, headerY, tableWidth, doc.y - headerY).stroke(COLORS.lightGray);
 }
 
-function calculateElementRowHeight(doc: PDFKit.PDFDocument, element: Element, colWidths: { desc: number }): number {
+function calculateElementRowHeight(doc: PDFKit.PDFDocument, element: Element, colWidths: { desc: number }, codeListMap: Map<string, CodeListEntry>): number {
   let height = 16;
 
   if (element.conditionDescription) {
@@ -515,9 +582,9 @@ function calculateElementRowHeight(doc: PDFKit.PDFDocument, element: Element, co
   }
   if (element.codeValues) {
     const includedCodes = element.codeValues.filter(c => c.included);
-    if (includedCodes.length > 0 && includedCodes.length <= 5) {
+    if (includedCodes.length > 0 && includedCodes.length <= 10) {
       height += includedCodes.length * 9;
-    } else if (includedCodes.length > 5) {
+    } else if (includedCodes.length > 10) {
       height += 12;
     }
   }
@@ -589,6 +656,78 @@ function renderExamplesAppendix(doc: PDFKit.PDFDocument, examples: ExampleEDI[])
       doc.text(line, 80, undefined, { width: doc.page.width - 160 });
     }
 
+    doc.moveDown(1.5);
+  }
+}
+
+function renderCodeListAppendix(doc: PDFKit.PDFDocument, codeListMap: Map<string, CodeListEntry>, hasExamples: boolean): void {
+  const appendixLetter = hasExamples ? 'B' : 'A';
+
+  doc
+    .font(FONTS.bold)
+    .fontSize(20)
+    .fillColor(COLORS.primary)
+    .text(`Appendix ${appendixLetter}: Code Lists`);
+
+  doc.moveDown(1);
+
+  for (const entry of codeListMap.values()) {
+    // Page break before each subsection
+    if (doc.y > doc.page.height - 150) {
+      doc.addPage();
+    }
+
+    doc
+      .font(FONTS.bold)
+      .fontSize(12)
+      .fillColor(COLORS.secondary)
+      .text(`${entry.appendixRef}  ${entry.elementName} (${entry.segmentName})`);
+
+    doc.moveDown(0.4);
+
+    const tableLeft = 72;
+    const tableWidth = doc.page.width - 144;
+    const codeColWidth = 80;
+    const descColWidth = tableWidth - codeColWidth;
+
+    // Header row
+    const headerY = doc.y;
+    doc.rect(tableLeft, headerY, tableWidth, 16).fill(COLORS.lightGray);
+    doc.font(FONTS.bold).fontSize(8).fillColor(COLORS.text);
+    doc.text('Code', tableLeft + 4, headerY + 4, { width: codeColWidth });
+    doc.text('Description', tableLeft + codeColWidth + 4, headerY + 4, { width: descColWidth - 8 });
+    doc.y = headerY + 18;
+
+    // Code rows
+    for (let i = 0; i < entry.codes.length; i++) {
+      const code = entry.codes[i];
+      const rowHeight = Math.max(16, doc.heightOfString(code.description, { width: descColWidth - 8 }) + 6);
+
+      if (doc.y + rowHeight > doc.page.height - 72) {
+        doc.addPage();
+        // Repeat header on new page
+        const contHeaderY = doc.y;
+        doc.rect(tableLeft, contHeaderY, tableWidth, 16).fill(COLORS.lightGray);
+        doc.font(FONTS.bold).fontSize(8).fillColor(COLORS.text);
+        doc.text('Code', tableLeft + 4, contHeaderY + 4, { width: codeColWidth });
+        doc.text('Description', tableLeft + codeColWidth + 4, contHeaderY + 4, { width: descColWidth - 8 });
+        doc.y = contHeaderY + 18;
+      }
+
+      const rowY = doc.y;
+
+      if (i % 2 === 0) {
+        doc.rect(tableLeft, rowY, tableWidth, rowHeight).fill('#f7fafc');
+      }
+
+      doc.font(FONTS.mono).fontSize(8).fillColor(COLORS.text);
+      doc.text(code.code, tableLeft + 4, rowY + 4, { width: codeColWidth });
+      doc.font(FONTS.regular).fontSize(8).fillColor(COLORS.text);
+      doc.text(code.description, tableLeft + codeColWidth + 4, rowY + 4, { width: descColWidth - 8 });
+      doc.y = rowY + rowHeight;
+    }
+
+    doc.rect(tableLeft, headerY, tableWidth, doc.y - headerY).stroke(COLORS.lightGray);
     doc.moveDown(1.5);
   }
 }
