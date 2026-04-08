@@ -700,7 +700,10 @@ function renderCodeListAppendix(doc: PDFKit.PDFDocument, codeListMap: Map<string
 
     // Code rows
     for (let i = 0; i < entry.codes.length; i++) {
-      if (doc.y > doc.page.height - 60) {
+      const code = entry.codes[i];
+      const rowHeight = Math.max(16, doc.heightOfString(code.description, { width: descColWidth - 8 }) + 6);
+
+      if (doc.y + rowHeight > doc.page.height - 72) {
         doc.addPage();
         // Repeat header on new page
         const contHeaderY = doc.y;
@@ -711,9 +714,7 @@ function renderCodeListAppendix(doc: PDFKit.PDFDocument, codeListMap: Map<string
         doc.y = contHeaderY + 18;
       }
 
-      const code = entry.codes[i];
       const rowY = doc.y;
-      const rowHeight = Math.max(16, doc.heightOfString(code.description, { width: descColWidth - 8 }) + 6);
 
       if (i % 2 === 0) {
         doc.rect(tableLeft, rowY, tableWidth, rowHeight).fill('#f7fafc');
