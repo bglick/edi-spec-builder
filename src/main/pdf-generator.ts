@@ -548,8 +548,9 @@ function renderElementsTable(doc: PDFKit.PDFDocument, elements: Element[], inden
       if (includedCodes.length <= 10) {
         for (const code of includedCodes) {
           doc.font(FONTS.mono).fontSize(7).fillColor(COLORS.text);
-          doc.text(`${code.code}: ${code.description}`, x, noteY, { width: colWidths.desc - 8 });
-          noteY += 9;
+          const codeText = `${code.code}: ${code.description}`;
+          doc.text(codeText, x, noteY, { width: colWidths.desc - 8 });
+          noteY += doc.heightOfString(codeText, { width: colWidths.desc - 8 }) + 1;
         }
       } else {
         const entry = codeListMap.get(element.id);
@@ -583,7 +584,10 @@ function calculateElementRowHeight(doc: PDFKit.PDFDocument, element: Element, co
   if (element.codeValues) {
     const includedCodes = element.codeValues.filter(c => c.included);
     if (includedCodes.length > 0 && includedCodes.length <= 10) {
-      height += includedCodes.length * 9;
+      doc.font(FONTS.mono).fontSize(7);
+      for (const code of includedCodes) {
+        height += doc.heightOfString(`${code.code}: ${code.description}`, { width: colWidths.desc - 8 }) + 1;
+      }
     } else if (includedCodes.length > 10) {
       height += 12;
     }
