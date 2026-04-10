@@ -3,7 +3,7 @@
  * Allows editing of loop properties, variants, and structure
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Specification, Loop, Segment, Variant, UsageType } from '../../shared/models/edi-types';
 import { v4 as uuidv4 } from 'uuid';
 import { UsageSelect } from './UsageSelect';
@@ -123,11 +123,17 @@ export function LoopEditor({ loop, path, specification, onUpdate }: LoopEditorPr
     updateLoop({ loops: loop.loops.filter(l => l.id !== loopId) });
   }, [loop.loops, updateLoop]);
 
-  // Drag and drop state
-  const dragItem = React.useRef<{ index: number; type: 'segment' | 'loop' } | null>(null);
+  // Sorted interleaved list of segments and child loops, used for both display and drag-and-drop
+  const sortedChildren = useMemo(() => [
+    ...loop.segments.map((seg, idx) => ({ type: 'segment' as const, item: seg, idx, _order: seg.order ?? idx })),
+    ...loop.loops.map((l, idx) => ({ type: 'loop' as const, item: l, idx, _order: l.order ?? (loop.segments.length + idx) })),
+  ].sort((a, b) => a._order - b._order), [loop.segments, loop.loops]);
 
-  const handleDragStart = useCallback((e: React.DragEvent, index: number, type: 'segment' | 'loop') => {
-    dragItem.current = { index, type };
+  // Drag and drop state — tracks position in the merged sorted list
+  const dragItem = React.useRef<number | null>(null);
+
+  const handleDragStart = useCallback((e: React.DragEvent, sortedIdx: number) => {
+    dragItem.current = sortedIdx;
     e.dataTransfer.effectAllowed = 'move';
   }, []);
 
@@ -136,30 +142,30 @@ export function LoopEditor({ loop, path, specification, onUpdate }: LoopEditorPr
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent, targetIndex: number, targetType: 'segment' | 'loop') => {
+  const handleDrop = useCallback((e: React.DragEvent, targetSortedIdx: number) => {
     e.preventDefault();
-    if (!dragItem.current) return;
+    if (dragItem.current === null) return;
+    const sourceIdx = dragItem.current;
+    if (sourceIdx === targetSortedIdx) return;
 
-    const { index: sourceIndex, type: sourceType } = dragItem.current;
+    // Reorder in the merged list then write back updated order values
+    const reordered = [...sortedChildren];
+    const [removed] = reordered.splice(sourceIdx, 1);
+    reordered.splice(targetSortedIdx, 0, removed);
 
-    // Only allow reordering within the same type
-    if (sourceType !== targetType) return;
-    if (sourceIndex === targetIndex) return;
+    const newSegments = [...loop.segments];
+    const newLoops = [...loop.loops];
+    reordered.forEach((child, newOrder) => {
+      if (child.type === 'segment') {
+        newSegments[child.idx] = { ...child.item, order: newOrder };
+      } else {
+        newLoops[child.idx] = { ...child.item, order: newOrder };
+      }
+    });
 
-    if (sourceType === 'segment') {
-      const newSegments = [...loop.segments];
-      const [removed] = newSegments.splice(sourceIndex, 1);
-      newSegments.splice(targetIndex, 0, removed);
-      updateLoop({ segments: newSegments });
-    } else {
-      const newLoops = [...loop.loops];
-      const [removed] = newLoops.splice(sourceIndex, 1);
-      newLoops.splice(targetIndex, 0, removed);
-      updateLoop({ loops: newLoops });
-    }
-
+    updateLoop({ segments: newSegments, loops: newLoops });
     dragItem.current = null;
-  }, [loop.segments, loop.loops, updateLoop]);
+  }, [sortedChildren, loop.segments, loop.loops, updateLoop]);
 
   return (
     <div className="editor">
@@ -307,51 +313,50 @@ export function LoopEditor({ loop, path, specification, onUpdate }: LoopEditorPr
                   </tr>
                 </thead>
                 <tbody>
-                  {loop.segments.map((seg, index) => (
+                  {sortedChildren.map((child, sortedIdx) => child.type === 'segment' ? (
                     <tr
-                      key={seg.id}
+                      key={child.item.id}
                       draggable
-                      onDragStart={(e) => handleDragStart(e, index, 'segment')}
+                      onDragStart={(e) => handleDragStart(e, sortedIdx)}
                       onDragOver={handleDragOver}
-                      onDrop={(e) => handleDrop(e, index, 'segment')}
+                      onDrop={(e) => handleDrop(e, sortedIdx)}
                       style={{ cursor: 'grab' }}
                     >
                       <td style={{ cursor: 'grab', color: '#718096' }}>⋮⋮</td>
                       <td><span className="usage-badge optional">SEG</span></td>
-                      <td>{seg.name}</td>
-                      <td>{seg.description}</td>
-                      <td><UsageBadge usage={seg.usage} /></td>
-                      <td><RepeatBadge maxUse={seg.maxUse} /></td>
+                      <td>{child.item.name}</td>
+                      <td>{child.item.description}</td>
+                      <td><UsageBadge usage={child.item.usage} /></td>
+                      <td><RepeatBadge maxUse={child.item.maxUse} /></td>
                       <td>
                         <button
                           className="btn btn-danger btn-sm btn-icon"
-                          onClick={() => handleDeleteSegment(seg.id)}
+                          onClick={() => handleDeleteSegment(child.item.id)}
                           title="Delete segment"
                         >
                           ×
                         </button>
                       </td>
                     </tr>
-                  ))}
-                  {loop.loops.map((l, index) => (
+                  ) : (
                     <tr
-                      key={l.id}
+                      key={child.item.id}
                       draggable
-                      onDragStart={(e) => handleDragStart(e, index, 'loop')}
+                      onDragStart={(e) => handleDragStart(e, sortedIdx)}
                       onDragOver={handleDragOver}
-                      onDrop={(e) => handleDrop(e, index, 'loop')}
+                      onDrop={(e) => handleDrop(e, sortedIdx)}
                       style={{ cursor: 'grab' }}
                     >
                       <td style={{ cursor: 'grab', color: '#718096' }}>⋮⋮</td>
                       <td><span className="usage-badge mandatory">LOOP</span></td>
-                      <td>{l.name}</td>
-                      <td>{l.description}</td>
-                      <td><UsageBadge usage={l.usage} /></td>
-                      <td><RepeatBadge maxUse={l.maxUse} /></td>
+                      <td>{child.item.name}</td>
+                      <td>{child.item.description}</td>
+                      <td><UsageBadge usage={child.item.usage} /></td>
+                      <td><RepeatBadge maxUse={child.item.maxUse} /></td>
                       <td>
                         <button
                           className="btn btn-danger btn-sm btn-icon"
-                          onClick={() => handleDeleteNestedLoop(l.id)}
+                          onClick={() => handleDeleteNestedLoop(child.item.id)}
                           title="Delete loop"
                         >
                           ×
