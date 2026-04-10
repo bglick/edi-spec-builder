@@ -264,16 +264,21 @@ function renderTableOfContents(doc: PDFKit.PDFDocument, spec: Specification, cod
 function renderTocLoop(doc: PDFKit.PDFDocument, loop: Loop, prefix: string, depth: number): void {
   const indent = 20 * depth;
 
-  for (let i = 0; i < loop.segments.length; i++) {
-    const seg = loop.segments[i];
-    doc.text(`${prefix}.${i + 1} ${seg.name} - ${seg.description}`, 72 + indent);
-  }
+  const children: ({ type: 'segment'; item: Segment } | { type: 'loop'; item: Loop })[] = [
+    ...loop.segments.map((s, idx) => ({ type: 'segment' as const, item: s, _order: s.order ?? idx })),
+    ...loop.loops.map((l, idx) => ({ type: 'loop' as const, item: l, _order: l.order ?? (loop.segments.length + idx) })),
+  ];
+  children.sort((a, b) => (a as any)._order - (b as any)._order);
 
-  for (let i = 0; i < loop.loops.length; i++) {
-    const childLoop = loop.loops[i];
-    const childPrefix = `${prefix}.${loop.segments.length + i + 1}`;
-    doc.text(`${childPrefix} ${childLoop.name} - ${childLoop.description || 'Loop'}`, 72 + indent);
-    renderTocLoop(doc, childLoop, childPrefix, depth + 1);
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    const childPrefix = `${prefix}.${i + 1}`;
+    if (child.type === 'segment') {
+      doc.text(`${childPrefix} ${child.item.name} - ${child.item.description}`, 72 + indent);
+    } else {
+      doc.text(`${childPrefix} ${child.item.name} - ${child.item.description || 'Loop'}`, 72 + indent);
+      renderTocLoop(doc, child.item, childPrefix, depth + 1);
+    }
   }
 }
 
@@ -338,14 +343,19 @@ function renderLoop(doc: PDFKit.PDFDocument, loop: Loop, number: number, depth: 
 
   doc.moveDown(0.5);
 
-  // Segments
-  for (const segment of loop.segments) {
-    renderSegment(doc, segment, depth, codeListMap);
-  }
+  // Render segments and child loops interleaved in their defined order
+  const children: ({ type: 'segment'; item: Segment } | { type: 'loop'; item: Loop; idx: number })[] = [
+    ...loop.segments.map((s, idx) => ({ type: 'segment' as const, item: s, _order: s.order ?? idx })),
+    ...loop.loops.map((l, idx) => ({ type: 'loop' as const, item: l, idx, _order: l.order ?? (loop.segments.length + idx) })),
+  ];
+  children.sort((a, b) => (a as any)._order - (b as any)._order);
 
-  // Nested Loops
-  for (let i = 0; i < loop.loops.length; i++) {
-    renderLoop(doc, loop.loops[i], i + 1, depth + 1, codeListMap);
+  for (const child of children) {
+    if (child.type === 'segment') {
+      renderSegment(doc, child.item, depth, codeListMap);
+    } else {
+      renderLoop(doc, child.item, child.idx + 1, depth + 1, codeListMap);
+    }
   }
 }
 
