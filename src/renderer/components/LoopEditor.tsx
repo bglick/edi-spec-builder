@@ -307,58 +307,63 @@ export function LoopEditor({ loop, path, specification, onUpdate }: LoopEditorPr
                   </tr>
                 </thead>
                 <tbody>
-                  {loop.segments.map((seg, index) => (
-                    <tr
-                      key={seg.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, index, 'segment')}
-                      onDragOver={handleDragOver}
-                      onDrop={(e) => handleDrop(e, index, 'segment')}
-                      style={{ cursor: 'grab' }}
-                    >
-                      <td style={{ cursor: 'grab', color: '#718096' }}>⋮⋮</td>
-                      <td><span className="usage-badge optional">SEG</span></td>
-                      <td>{seg.name}</td>
-                      <td>{seg.description}</td>
-                      <td><UsageBadge usage={seg.usage} /></td>
-                      <td><RepeatBadge maxUse={seg.maxUse} /></td>
-                      <td>
-                        <button
-                          className="btn btn-danger btn-sm btn-icon"
-                          onClick={() => handleDeleteSegment(seg.id)}
-                          title="Delete segment"
-                        >
-                          ×
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {loop.loops.map((l, index) => (
-                    <tr
-                      key={l.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, index, 'loop')}
-                      onDragOver={handleDragOver}
-                      onDrop={(e) => handleDrop(e, index, 'loop')}
-                      style={{ cursor: 'grab' }}
-                    >
-                      <td style={{ cursor: 'grab', color: '#718096' }}>⋮⋮</td>
-                      <td><span className="usage-badge mandatory">LOOP</span></td>
-                      <td>{l.name}</td>
-                      <td>{l.description}</td>
-                      <td><UsageBadge usage={l.usage} /></td>
-                      <td><RepeatBadge maxUse={l.maxUse} /></td>
-                      <td>
-                        <button
-                          className="btn btn-danger btn-sm btn-icon"
-                          onClick={() => handleDeleteNestedLoop(l.id)}
-                          title="Delete loop"
-                        >
-                          ×
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {[
+                    ...loop.segments.map((seg, idx) => ({ type: 'segment' as const, item: seg, idx, _order: seg.order ?? idx })),
+                    ...loop.loops.map((l, idx) => ({ type: 'loop' as const, item: l, idx, _order: l.order ?? (loop.segments.length + idx) })),
+                  ]
+                    .sort((a, b) => a._order - b._order)
+                    .map((child) => child.type === 'segment' ? (
+                      <tr
+                        key={child.item.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, child.idx, 'segment')}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, child.idx, 'segment')}
+                        style={{ cursor: 'grab' }}
+                      >
+                        <td style={{ cursor: 'grab', color: '#718096' }}>⋮⋮</td>
+                        <td><span className="usage-badge optional">SEG</span></td>
+                        <td>{child.item.name}</td>
+                        <td>{child.item.description}</td>
+                        <td><UsageBadge usage={child.item.usage} /></td>
+                        <td><RepeatBadge maxUse={child.item.maxUse} /></td>
+                        <td>
+                          <button
+                            className="btn btn-danger btn-sm btn-icon"
+                            onClick={() => handleDeleteSegment(child.item.id)}
+                            title="Delete segment"
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr
+                        key={child.item.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, child.idx, 'loop')}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, child.idx, 'loop')}
+                        style={{ cursor: 'grab' }}
+                      >
+                        <td style={{ cursor: 'grab', color: '#718096' }}>⋮⋮</td>
+                        <td><span className="usage-badge mandatory">LOOP</span></td>
+                        <td>{child.item.name}</td>
+                        <td>{child.item.description}</td>
+                        <td><UsageBadge usage={child.item.usage} /></td>
+                        <td><RepeatBadge maxUse={child.item.maxUse} /></td>
+                        <td>
+                          <button
+                            className="btn btn-danger btn-sm btn-icon"
+                            onClick={() => handleDeleteNestedLoop(child.item.id)}
+                            title="Delete loop"
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  }
                 </tbody>
               </table>
             </div>
