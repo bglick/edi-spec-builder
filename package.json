@@ -1,6 +1,6 @@
 {
   "name": "edi-spec-builder",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "ANSI X12 EDI Specification Builder - Create, edit, and export EDI implementation specifications",
   "main": "dist/main/main/main.js",
   "scripts": {
